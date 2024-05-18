@@ -1,80 +1,130 @@
 using System.Collections;
-using System.Collections.Generic;
+using System.ComponentModel;
 using UnityEngine;
 using UnityEngine.AI;
 
-public enum AgentMoveType
+public enum AgentFraction
 {
-    RandomInRange,
-    Option2,
-    Option3
+    Farmer,
+    Bandit
 }
 public class NPCBrain : MonoBehaviour
 {
-    public AgentMoveType MoveType = AgentMoveType.RandomInRange;
+    public AgentFraction agentFraction;
+    public Transform targetTransform; // Assign this in the Inspector
+    public float minWaitTime = 1f;
+    public float maxWaitTime = 3f;
+    public float stoppingDistance = 2f;
+
     private NavMeshAgent agent;
     private Animator animator;
-
-    private float minX = -10f;
-    private float maxX = 10f;
-    private float minZ = -10f;
-    private float maxZ = 10f;
-    public float MinX
-    {
-        get { return minX; }
-        set { minX = value; }
-    }
-    public float MaxX
-    {
-        get { return maxX; }
-        set { maxX = value; }
-    }
-    public float MinZ
-    {
-        get { return minZ; }
-        set { minZ = value; }
-    }
-    public float MaxZ
-    {
-        get { return maxZ; }
-        set { maxZ = value; }
-    }
-
-    public float changeDestinationInterval = 3f;
-    public float holdDuration = 2f;
+    private bool isWaiting = false;
+    private float waitStartTime;
 
     void Start()
     {
         agent = GetComponent<NavMeshAgent>();
         animator = GetComponent<Animator>();
-        StartCoroutine(MoveToRandomDestination());
-    }
-
-    IEnumerator MoveToRandomDestination()
-    {
-        if(MoveType == AgentMoveType.RandomInRange)
-        {
-            while (true)
-            {
-                Vector3 randomPosition = new Vector3(Random.Range(MinX, MaxX), 0f, Random.Range(MinZ, MaxZ));
-                NavMeshHit hit;
-                if (NavMesh.SamplePosition(randomPosition, out hit, 1.0f, NavMesh.AllAreas))
-                {
-                    agent.SetDestination(hit.position);
-                    yield return new WaitUntil(() => !agent.pathPending && agent.remainingDistance <= agent.stoppingDistance);
-                    yield return new WaitForSeconds(holdDuration);
-                }
-                else
-                {
-                    Debug.LogWarning("Random position is not on NavMesh!");
-                }
-            }
-        }
+        SetDestination();
     }
 
     void Update()
     {
-        bool isMoving = agent.velocity.magnitude > 0.1f;
-        animator.SetBool("Move", isMoving);
+        if (!isWaiting)
+        {
+            #region When agent has tartget destination
+            if (targetTransform != null)
+            {
+                if (Vector3.Distance(transform.position, targetTransform.position) < stoppingDistance)
+                {
+                    StopMovement();
+                }
+                else
+                {
+                    agent.SetDestination(targetTransform.position);
+                }
+            }
+            #endregion
+            #region When agent has random destination
+            else if (!agent.pathPending)
+            {
+                if (agent.remainingDistance < 0.1f)
+                {
+                    StopMovement();
+                }
+            }
+            #endregion
+        }
+        else
+        {
+            if (targetTransform == null)
+            {
+                if (Time.time - waitStartTime >= Random.Range(minWaitTime, maxWaitTime))
+                {
+                    isWaiting = false;
+                    SetDestination();
+                }
+            }
+        }
+        animator.SetBool("Move", !isWaiting);
     }
+    private IEnumerator Test()
+    {
+        yield return new WaitForSeconds(3);
+        targetTransform = null;
+        agent.isStopped = false;
+    }
+    #region Action when reach to target destination
+    void StopMovement()
+    {
+        if (targetTransform != null) // Check if moving towards a target
+        {
+            // Stop all movement actions
+            agent.isStopped = true;
+
+            // Trigger your action here
+            Debug.Log("Triggered action");
+            StartCoroutine(Test());
+            // Set waiting flag
+            isWaiting = true;
+            waitStartTime = Time.time;
+        }
+        else // If moving to random location, continue waiting
+        {
+            isWaiting = true;
+            waitStartTime = Time.time;
+        }
+    }
+    #endregion
+
+    #region Keep eye on alerted target 
+    private void OnTriggerEnter(Collider other)
+    {
+        NPCBrain otherNPCBrain = other.GetComponent<NPCBrain>();
+        if (otherNPCBrain != null && otherNPCBrain.agentFraction == this.agentFraction)
+        {
+            isWaiting = false;
+            targetTransform = other.transform;
+        }
+    }
+    #endregion
+
+    #region Setting up random destination
+    void SetDestination()
+    {
+        if (targetTransform != null)
+        {
+            if (Vector3.Distance(transform.position, targetTransform.position) > stoppingDistance)
+            {
+                agent.SetDestination(targetTransform.position);
+            }
+        }
+        else
+        {
+            NavMeshHit hit;
+            NavMesh.SamplePosition(Random.insideUnitSphere * 10, out hit, 10, NavMesh.AllAreas);
+            agent.SetDestination(hit.position);
+        }
+    }
+    #endregion
 }

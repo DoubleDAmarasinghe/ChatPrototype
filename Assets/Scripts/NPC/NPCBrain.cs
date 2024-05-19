@@ -6,6 +6,7 @@ using UnityEngine.AI;
 public enum AgentFraction
 {
     Farmer,
+    Militia,
     Bandit
 }
 public class NPCBrain : MonoBehaviour
@@ -17,14 +18,15 @@ public class NPCBrain : MonoBehaviour
     public float stoppingDistance = 2f;
 
     private NavMeshAgent agent;
-    private Animator animator;
+    private NPCBody body;
     private bool isWaiting = false;
     private float waitStartTime;
+    private bool isCombat;
 
     void Start()
     {
         agent = GetComponent<NavMeshAgent>();
-        animator = GetComponent<Animator>();
+        body = GetComponent<NPCBody>();
         SetDestination();
     }
 
@@ -66,7 +68,7 @@ public class NPCBrain : MonoBehaviour
                 }
             }
         }
-        animator.SetBool("Move", !isWaiting);
+        body.Moving(!isWaiting);
     }
     private IEnumerator Test()
     {
@@ -84,10 +86,20 @@ public class NPCBrain : MonoBehaviour
 
             // Trigger your action here
             Debug.Log("Triggered action");
-            StartCoroutine(Test());
-            // Set waiting flag
-            isWaiting = true;
-            waitStartTime = Time.time;
+            if (!isCombat)
+            {
+                body.Responding();
+                StartCoroutine(Test());
+                // Set waiting flag
+                isWaiting = true;
+                waitStartTime = Time.time;
+            }
+            else
+            {
+                isWaiting = true;
+                body.Combat();
+            }
+
         }
         else // If moving to random location, continue waiting
         {
@@ -105,6 +117,12 @@ public class NPCBrain : MonoBehaviour
         {
             isWaiting = false;
             targetTransform = other.transform;
+        }
+        else if (otherNPCBrain != null && otherNPCBrain.agentFraction != this.agentFraction)
+        {
+            isWaiting = false;
+            targetTransform = other.transform;
+            isCombat = true;
         }
     }
     #endregion
